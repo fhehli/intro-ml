@@ -10,9 +10,15 @@ X, y = df.loc[:, "x1":], df["y"]
 lambdas = [0.1, 1.0, 10.0, 100.0, 200.0]
 scores = []
 for lmbda in lambdas:
-    fold_scores = cross_val_score(Ridge(alpha=lmbda, solver="svd"), X, y, cv=10)
+    fold_scores = cross_val_score(
+        Ridge(alpha=lmbda, fit_intercept=False),
+        X,
+        y,
+        cv=10,
+        scoring="neg_root_mean_squared_error",
+    )
     scores.append(-fold_scores.mean())
 
 # export
 submission = pd.DataFrame(scores)
-submission.to_csv("./submission.csv", header=False, index=False)
+submission.to_csv("./task1a/submission.csv", header=False, index=False)
