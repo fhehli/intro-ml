@@ -11,7 +11,7 @@ Phi = np.concatenate(
 )
 
 # fit model
-clf = Ridge(alpha=11.0, fit_intercept=False)
+clf = Ridge(alpha=22.0, fit_intercept=False)
 clf.fit(Phi, y)
 
 # export
