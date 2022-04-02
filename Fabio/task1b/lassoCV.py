@@ -3,7 +3,7 @@ import pandas as pd
 from sklearn.linear_model import LassoCV
 
 # import data
-df = pd.read_csv("task1b/train.csv", index_col=0)
+df = pd.read_csv("Fabio/task1b/train.csv", index_col=0)
 data = df.to_numpy()
 X, y = data[:, 1:], data[:, 0]
 Phi = np.concatenate(
@@ -16,4 +16,4 @@ clf.fit(Phi, y)
 
 # export
 weights = clf.coef_
-pd.DataFrame(weights).to_csv("task1b/lassoCV.csv", header=False, index=False)
+pd.DataFrame(weights).to_csv("Fabio/task1b/lassoCVtry.csv", header=False, index=False)
