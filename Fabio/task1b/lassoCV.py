@@ -16,4 +16,4 @@ clf.fit(Phi, y)
 
 # export
 weights = clf.coef_
-pd.DataFrame(weights).to_csv("Fabio/task1b/lassoCVtry.csv", header=False, index=False)
+pd.DataFrame(weights).to_csv("Fabio/task1b/lassoCV.csv", header=False, index=False)
