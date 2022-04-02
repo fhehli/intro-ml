@@ -10,7 +10,7 @@ df_labels = pd.read_csv("train_labels.csv")
 averages = df_features.mean(axis=0)
 
 #probably a mistake, but decided to remove all the sparsity in the dataset (it would be great to at least include weighted average)
-df_features = df_features.groupby(['pid']).mean()
+df_features = df_features.groupby(['pid'], sort=False, as_index = False).mean()
 
 df_features.fillna(value=averages, inplace = True)
 
@@ -28,4 +28,16 @@ df_classification, df_sepsis, df_regression = df_labels.loc[:, "LABEL_BaseExcess
 
 #TODO: mean value of vital signs (regression)
 
-sgd = SGDRegressor()
+df_test_features = df_test_features.groupby(['pid'], sort=False, as_index = False).mean()
+
+df_test_features.fillna(value=averages, inplace = True)
+
+test_results = pd.DataFrame(df_test_features["pid"], columns = ['pid'])
+
+for (columnName, columnData) in df_regression.iteritems():
+    
+    sgd = SGDRegressor(max_iter=10000)
+    sgd.fit(df_features,df_regression[columnName])
+    
+    test_results[columnName] = sgd.predict(df_test_features)
+    
