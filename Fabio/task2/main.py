@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import HistGradientBoostingClassifier
@@ -22,20 +23,54 @@ TESTS = [
 
 def get_features(df):
     df.drop("Time", axis=1, inplace=True)
+    df_age = df.groupby("pid", sort=False).first()["Age"]
     df_mean = df.groupby("pid", sort=False).mean().add_suffix("_mean")
     df_var = df.groupby("pid", sort=False).var().add_suffix("_var")
     df_min = df.groupby("pid", sort=False).min().add_suffix("_min")
     df_max = df.groupby("pid", sort=False).max().add_suffix("_max")
     df_n_measurements = (
-        df.groupby("pid", sort=False)
-        .apply(lambda x: 12 - x.isna().sum())
-        .add_suffix("_n_meas")
-        .drop("pid_n_meas", axis=1)
+        df.groupby("pid", sort=False).count().add_suffix("_n_meas")
     )  # Number of measurements
-    df_age = df_mean.loc[:, "Age_mean"]
+    df_last_measurement = (
+        df.groupby("pid", sort=False)
+        .agg(
+            lambda x: x[x.last_valid_index()]
+            if x.last_valid_index() is not None
+            else np.nan
+        )
+        .add_suffix("_last_measurement")
+    )
+    df_diff = df.groupby("pid", sort=False).agg(
+        lambda x: x[x.last_valid_index()] - x[x.first_valid_index()]
+        if (
+            x.last_valid_index() is not None
+            or x.last_valid_index() != x.first_valid_index()
+        )
+        else np.nan
+    )  # Difference between first and last measurement
+    df_diff_by_time = df.groupby("pid", sort=False).agg(
+        lambda x: (x[x.last_valid_index()] - x[x.first_valid_index()])
+        / (x.last_valid_index() - x.first_valid_index())
+        if (
+            x.last_valid_index() is not None
+            and x.last_valid_index() != x.first_valid_index()
+        )
+        else np.nan
+    )  # Difference between first and last measurement divided by time difference
 
     return pd.concat(
-        [df_age, df_mean, df_var, df_min, df_max, df_n_measurements], axis=1
+        [
+            df_age,
+            df_mean,
+            df_var,
+            df_min,
+            df_max,
+            df_n_measurements,
+            df_last_measurement,
+            df_diff,
+            df_diff_by_time,
+        ],
+        axis=1,
     )
 
 
