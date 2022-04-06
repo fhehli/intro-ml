@@ -23,14 +23,19 @@ TESTS = [
 
 def get_features(df):
     df.drop("Time", axis=1, inplace=True)
+
     df_age = df.groupby("pid", sort=False).first()["Age"]
+
+    # Simple statistics
     df_mean = df.groupby("pid", sort=False).mean().add_suffix("_mean")
     df_var = df.groupby("pid", sort=False).var().add_suffix("_var")
     df_min = df.groupby("pid", sort=False).min().add_suffix("_min")
     df_max = df.groupby("pid", sort=False).max().add_suffix("_max")
-    df_n_measurements = (
-        df.groupby("pid", sort=False).count().add_suffix("_n_meas")
-    )  # Number of measurements
+
+    # Number of measurements
+    df_n_measurements = df.groupby("pid", sort=False).count().add_suffix("_n_meas")
+
+    # Most recent measurement
     df_last_measurement = (
         df.groupby("pid", sort=False)
         .agg(
@@ -40,6 +45,8 @@ def get_features(df):
         )
         .add_suffix("_last_measurement")
     )
+
+    # Difference between first and last measurement
     df_diff = df.groupby("pid", sort=False).agg(
         lambda x: x[x.last_valid_index()] - x[x.first_valid_index()]
         if (
@@ -47,7 +54,9 @@ def get_features(df):
             or x.last_valid_index() != x.first_valid_index()
         )
         else np.nan
-    )  # Difference between first and last measurement
+    )
+
+    # Difference between first and last measurement divided by time difference
     df_diff_by_time = df.groupby("pid", sort=False).agg(
         lambda x: (x[x.last_valid_index()] - x[x.first_valid_index()])
         / (x.last_valid_index() - x.first_valid_index())
@@ -56,7 +65,7 @@ def get_features(df):
             and x.last_valid_index() != x.first_valid_index()
         )
         else np.nan
-    )  # Difference between first and last measurement divided by time difference
+    )
 
     return pd.concat(
         [
@@ -107,18 +116,50 @@ print("Finished data handling.")
 
 # subtask 1&2 -----------------------------------------------------------
 print("Fitting models for subtask 1&2...")
-params = {
+shared_params = {
     "loss": "binary_crossentropy",
-    "learning_rate": 0.1,
-    "l2_regularization": 0.0,
     "early_stopping": True,
     "scoring": "roc_auc",
-    "max_depth": None,
 }
 
-hgbc = HistGradientBoostingClassifier(**params)
+# found by grid search
+individual_params = {
+    "LABEL_BaseExcess": {
+        "l2_regularization": 0.1,
+        "learning_rate": 0.1,
+        "max_depth": 5,
+    },
+    "LABEL_Fibrinogen": {
+        "l2_regularization": 0.1,
+        "learning_rate": 0.2,
+        "max_depth": 3,
+    },
+    "LABEL_AST": {"l2_regularization": 0, "learning_rate": 0.05, "max_depth": None},
+    "LABEL_Alkalinephos": {
+        "l2_regularization": 0.1,
+        "learning_rate": 0.05,
+        "max_depth": None,
+    },
+    "LABEL_Bilirubin_total": {
+        "l2_regularization": 0.1,
+        "learning_rate": 0.05,
+        "max_depth": None,
+    },
+    "LABEL_Lactate": {"l2_regularization": 0.01, "learning_rate": 0.1, "max_depth": 3},
+    "LABEL_TroponinI": {"l2_regularization": 0.1, "learning_rate": 0.1, "max_depth": 5},
+    "LABEL_SaO2": {"l2_regularization": 0.01, "learning_rate": 0.1, "max_depth": 5},
+    "LABEL_Bilirubin_direct": {
+        "l2_regularization": 0.1,
+        "learning_rate": 0.05,
+        "max_depth": 5,
+    },
+    "LABEL_EtCO2": {"l2_regularization": 0.1, "learning_rate": 0.2, "max_depth": 3},
+    "LABEL_Sepsis": {"l2_regularization": 0.01, "learning_rate": 0.1, "max_depth": 3},
+}
+
 
 for target in TESTS + ["LABEL_Sepsis"]:
+    hgbc = HistGradientBoostingClassifier(**shared_params, **individual_params[target])
     hgbc.fit(X_train, df_training_labels[target])  # fit
     df_pred[target] = hgbc.predict_proba(X_test)[:, 1]  # predict
 
@@ -126,18 +167,22 @@ print("Finished fitting models for subtask 1&2.")
 
 # subtask 3 -------------------------------------------------------------
 print("Fitting models for subtask 3...")
-params = {
+shared_params = {
     "loss": "squared_error",
-    "learning_rate": 0.1,
-    "l2_regularization": 0,
     "early_stopping": True,
     "scoring": "r2",
-    "max_depth": None,
 }
 
-hgbr = HistGradientBoostingRegressor(**params)
+# found by grid search
+individual_params = {
+    "LABEL_RRate": {"l2_regularization": 0, "learning_rate": 0.05, "max_depth": 5},
+    "LABEL_ABPm": {"l2_regularization": 0, "learning_rate": 0.05, "max_depth": None},
+    "LABEL_SpO2": {"l2_regularization": 0.01, "learning_rate": 0.1, "max_depth": 5},
+    "LABEL_Heartrate": {"l2_regularization": 0, "learning_rate": 0.05, "max_depth": 5},
+}
 
 for target in VITALS:
+    hgbr = HistGradientBoostingRegressor(**shared_params, **individual_params[target])
     hgbr.fit(X_train, df_training_labels[target])  # fit
     df_pred[target] = hgbr.predict(X_test)  # predict
 
@@ -145,4 +190,6 @@ print("Finished fitting models for subtask 3.")
 # -----------------------------------------------------------------------
 
 # export
-df_pred.to_csv("prediction.zip", index=False, float_format="%.3f", compression="zip")
+df_pred.to_csv(
+    "Fabio/task2/prediction.zip", index=False, float_format="%.3f", compression="zip"
+)
