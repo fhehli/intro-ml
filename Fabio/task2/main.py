@@ -100,7 +100,7 @@ params = {
     "max_depth": None,
 }
 
-hgbr = HistGradientBoostingRegressor()
+hgbr = HistGradientBoostingRegressor(**params)
 
 for target in VITALS:
     hgbr.fit(X_train, df_training_labels[target])  # fit
