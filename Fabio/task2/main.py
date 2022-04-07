@@ -6,7 +6,6 @@ from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.ensemble import HistGradientBoostingRegressor
 
 
-VITALS = ["LABEL_RRate", "LABEL_ABPm", "LABEL_SpO2", "LABEL_Heartrate"]
 TESTS = [
     "LABEL_BaseExcess",
     "LABEL_Fibrinogen",
@@ -18,7 +17,56 @@ TESTS = [
     "LABEL_SaO2",
     "LABEL_Bilirubin_direct",
     "LABEL_EtCO2",
+    "LABEL_Sepsis",
 ]
+VITALS = [
+    "LABEL_RRate",
+    "LABEL_ABPm",
+    "LABEL_SpO2",
+    "LABEL_Heartrate",
+]
+
+# optimal parameters found by grid search
+individual_params_tests = {
+    "LABEL_BaseExcess": {
+        "l2_regularization": 0.1,
+        "learning_rate": 0.1,
+        "max_depth": 5,
+    },
+    "LABEL_Fibrinogen": {
+        "l2_regularization": 0.1,
+        "learning_rate": 0.2,
+        "max_depth": 3,
+    },
+    "LABEL_AST": {"l2_regularization": 0, "learning_rate": 0.05, "max_depth": None},
+    "LABEL_Alkalinephos": {
+        "l2_regularization": 0.1,
+        "learning_rate": 0.05,
+        "max_depth": None,
+    },
+    "LABEL_Bilirubin_total": {
+        "l2_regularization": 0.1,
+        "learning_rate": 0.05,
+        "max_depth": None,
+    },
+    "LABEL_Lactate": {"l2_regularization": 0.01, "learning_rate": 0.1, "max_depth": 3},
+    "LABEL_TroponinI": {"l2_regularization": 0.1, "learning_rate": 0.1, "max_depth": 5},
+    "LABEL_SaO2": {"l2_regularization": 0.01, "learning_rate": 0.1, "max_depth": 5},
+    "LABEL_Bilirubin_direct": {
+        "l2_regularization": 0.1,
+        "learning_rate": 0.05,
+        "max_depth": 5,
+    },
+    "LABEL_EtCO2": {"l2_regularization": 0.1, "learning_rate": 0.2, "max_depth": 3},
+    "LABEL_Sepsis": {"l2_regularization": 0.01, "learning_rate": 0.1, "max_depth": 3},
+}
+
+individual_params_labels = {
+    "LABEL_RRate": {"l2_regularization": 0, "learning_rate": 0.05, "max_depth": 5},
+    "LABEL_ABPm": {"l2_regularization": 0, "learning_rate": 0.05, "max_depth": None},
+    "LABEL_SpO2": {"l2_regularization": 0.01, "learning_rate": 0.1, "max_depth": 5},
+    "LABEL_Heartrate": {"l2_regularization": 0, "learning_rate": 0.05, "max_depth": 5},
+}
 
 
 def get_features(df):
@@ -49,10 +97,7 @@ def get_features(df):
     # Difference between first and last measurement
     df_diff = df.groupby("pid", sort=False).agg(
         lambda x: x[x.last_valid_index()] - x[x.first_valid_index()]
-        if (
-            x.last_valid_index() is not None
-            or x.last_valid_index() != x.first_valid_index()
-        )
+        if x.last_valid_index() != x.first_valid_index()
         else np.nan
     )
 
@@ -60,10 +105,7 @@ def get_features(df):
     df_diff_by_time = df.groupby("pid", sort=False).agg(
         lambda x: (x[x.last_valid_index()] - x[x.first_valid_index()])
         / (x.last_valid_index() - x.first_valid_index())
-        if (
-            x.last_valid_index() is not None
-            and x.last_valid_index() != x.first_valid_index()
-        )
+        if x.last_valid_index() != x.first_valid_index()
         else np.nan
     )
 
@@ -122,44 +164,10 @@ shared_params = {
     "scoring": "roc_auc",
 }
 
-# found by grid search
-individual_params = {
-    "LABEL_BaseExcess": {
-        "l2_regularization": 0.1,
-        "learning_rate": 0.1,
-        "max_depth": 5,
-    },
-    "LABEL_Fibrinogen": {
-        "l2_regularization": 0.1,
-        "learning_rate": 0.2,
-        "max_depth": 3,
-    },
-    "LABEL_AST": {"l2_regularization": 0, "learning_rate": 0.05, "max_depth": None},
-    "LABEL_Alkalinephos": {
-        "l2_regularization": 0.1,
-        "learning_rate": 0.05,
-        "max_depth": None,
-    },
-    "LABEL_Bilirubin_total": {
-        "l2_regularization": 0.1,
-        "learning_rate": 0.05,
-        "max_depth": None,
-    },
-    "LABEL_Lactate": {"l2_regularization": 0.01, "learning_rate": 0.1, "max_depth": 3},
-    "LABEL_TroponinI": {"l2_regularization": 0.1, "learning_rate": 0.1, "max_depth": 5},
-    "LABEL_SaO2": {"l2_regularization": 0.01, "learning_rate": 0.1, "max_depth": 5},
-    "LABEL_Bilirubin_direct": {
-        "l2_regularization": 0.1,
-        "learning_rate": 0.05,
-        "max_depth": 5,
-    },
-    "LABEL_EtCO2": {"l2_regularization": 0.1, "learning_rate": 0.2, "max_depth": 3},
-    "LABEL_Sepsis": {"l2_regularization": 0.01, "learning_rate": 0.1, "max_depth": 3},
-}
-
-
-for target in TESTS + ["LABEL_Sepsis"]:
-    hgbc = HistGradientBoostingClassifier(**shared_params, **individual_params[target])
+for target in TESTS:
+    hgbc = HistGradientBoostingClassifier(
+        **shared_params, **individual_params_tests[target]
+    )
     hgbc.fit(X_train, df_training_labels[target])  # fit
     df_pred[target] = hgbc.predict_proba(X_test)[:, 1]  # predict
 
@@ -173,20 +181,15 @@ shared_params = {
     "scoring": "r2",
 }
 
-# found by grid search
-individual_params = {
-    "LABEL_RRate": {"l2_regularization": 0, "learning_rate": 0.05, "max_depth": 5},
-    "LABEL_ABPm": {"l2_regularization": 0, "learning_rate": 0.05, "max_depth": None},
-    "LABEL_SpO2": {"l2_regularization": 0.01, "learning_rate": 0.1, "max_depth": 5},
-    "LABEL_Heartrate": {"l2_regularization": 0, "learning_rate": 0.05, "max_depth": 5},
-}
-
 for target in VITALS:
-    hgbr = HistGradientBoostingRegressor(**shared_params, **individual_params[target])
+    hgbr = HistGradientBoostingRegressor(
+        **shared_params, **individual_params_labels[target]
+    )
     hgbr.fit(X_train, df_training_labels[target])  # fit
     df_pred[target] = hgbr.predict(X_test)  # predict
 
 print("Finished fitting models for subtask 3.")
+
 # -----------------------------------------------------------------------
 
 # export
