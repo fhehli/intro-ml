@@ -26,6 +26,18 @@ VITALS = [
     "LABEL_Heartrate",
 ]
 
+shared_params_tests = {
+    "loss": "binary_crossentropy",
+    "early_stopping": True,
+    "scoring": "roc_auc",
+}
+
+shared_params_labels = {
+    "loss": "squared_error",
+    "early_stopping": True,
+    "scoring": "r2",
+}
+
 # optimal parameters found by grid search
 individual_params_tests = {
     "LABEL_BaseExcess": {
@@ -95,18 +107,26 @@ def get_features(df):
     )
 
     # Difference between first and last measurement
-    df_diff = df.groupby("pid", sort=False).agg(
-        lambda x: x[x.last_valid_index()] - x[x.first_valid_index()]
-        if x.last_valid_index() != x.first_valid_index()
-        else np.nan
+    df_diff = (
+        df.groupby("pid", sort=False)
+        .agg(
+            lambda x: x[x.last_valid_index()] - x[x.first_valid_index()]
+            if x.last_valid_index() != x.first_valid_index()
+            else np.nan
+        )
+        .add_suffix("_diff")
     )
 
     # Difference between first and last measurement divided by time difference
-    df_diff_by_time = df.groupby("pid", sort=False).agg(
-        lambda x: (x[x.last_valid_index()] - x[x.first_valid_index()])
-        / (x.last_valid_index() - x.first_valid_index())
-        if x.last_valid_index() != x.first_valid_index()
-        else np.nan
+    df_diff_by_time = (
+        df.groupby("pid", sort=False)
+        .agg(
+            lambda x: (x[x.last_valid_index()] - x[x.first_valid_index()])
+            / (x.last_valid_index() - x.first_valid_index())
+            if x.last_valid_index() != x.first_valid_index()
+            else np.nan
+        )
+        .add_suffix("_diff_by_time")
     )
 
     return pd.concat(
@@ -158,15 +178,10 @@ print("Finished data handling.")
 
 # subtask 1&2 -----------------------------------------------------------
 print("Fitting models for subtask 1&2...")
-shared_params = {
-    "loss": "binary_crossentropy",
-    "early_stopping": True,
-    "scoring": "roc_auc",
-}
 
 for target in TESTS:
     hgbc = HistGradientBoostingClassifier(
-        **shared_params, **individual_params_tests[target]
+        **shared_params_tests, **individual_params_tests[target]
     )
     hgbc.fit(X_train, df_training_labels[target])  # fit
     df_pred[target] = hgbc.predict_proba(X_test)[:, 1]  # predict
@@ -175,15 +190,10 @@ print("Finished fitting models for subtask 1&2.")
 
 # subtask 3 -------------------------------------------------------------
 print("Fitting models for subtask 3...")
-shared_params = {
-    "loss": "squared_error",
-    "early_stopping": True,
-    "scoring": "r2",
-}
 
 for target in VITALS:
     hgbr = HistGradientBoostingRegressor(
-        **shared_params, **individual_params_labels[target]
+        **shared_params_labels, **individual_params_labels[target]
     )
     hgbr.fit(X_train, df_training_labels[target])  # fit
     df_pred[target] = hgbr.predict(X_test)  # predict

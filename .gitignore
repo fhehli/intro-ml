@@ -124,3 +124,10 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# images
+food/
+food.zip
+scratch.ipynb
+
+.vscode
