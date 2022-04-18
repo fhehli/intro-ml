@@ -22,8 +22,8 @@ tfms = transforms.Compose(
 )  # preprocessing
 
 efficientnet = models.efficientnet_b0(pretrained=True)  # load pretrained model
-embedding = lru_cache(
-    nn.Sequential(*list(efficientnet.children())[:-1]), maxsize=512
+embedding = nn.Sequential(
+    *list(efficientnet.children())[:-1]
 )  # create embedding map by omitting final classification layer
 
 # compute embeddings
