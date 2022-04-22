@@ -128,6 +128,8 @@ dmypy.json
 # images
 food/
 food.zip
-scratch.ipynb
+
+lightning_logs
+*.pkl
 
 .vscode
