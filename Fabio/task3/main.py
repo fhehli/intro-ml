@@ -1,4 +1,5 @@
 import os
+import sys
 import pickle
 from functools import partial
 from PIL import Image
@@ -25,14 +26,92 @@ train_path = base + "train_triplets.txt"
 test_path = base + "test_triplets.txt"
 
 
-def get_split():
+def get_split(val_ratio):
     triplets = np.loadtxt(train_path, delimiter=" ").astype(int)
-
     train_triplets, val_triplets = train_test_split(
-        triplets, test_size=0.2, random_state=489, shuffle=True
+        triplets, test_size=val_ratio, shuffle=True
     )
-
     return train_triplets, val_triplets
+
+
+def get_features(name):
+    pkl_path = f"{name}_features.pkl"
+
+    if name == "ResNet18":
+        backbone = models.resnet18(pretrained=True)
+    elif name == "ResNet34":
+        backbone = models.resnet34(pretrained=True)
+    elif name == "ResNet50":
+        backbone = models.resnet50(pretrained=True)
+    elif name == "ResNet101":
+        backbone = models.resnet101(pretrained=True)
+    elif name == "ResNet152":
+        backbone = models.resnet152(pretrained=True)
+    elif name == "ViT_b_16":
+        backbone = models.vit_b_16(pretrained=True)
+    elif name == "ViT_b_32":
+        backbone = models.vit_b_32(pretrained=True)
+    else:
+        sys.exit("Error: This model is not implemented.")
+
+    if name.startswith("ResNet"):
+        features_dim = list(backbone.children())[-1].in_features
+    elif name.startswith("ViT"):
+        features_dim = list(backbone.heads.children())[0].in_features
+
+    if os.path.exists(pkl_path):
+        # fetch precopmuted features from earlier run
+        with open(pkl_path, "rb") as f:
+            features = pickle.load(f)
+    else:
+        # compute features
+        backbone.cuda()
+        if name.startswith("ResNet"):
+            feature_map = nn.Sequential(*list(backbone.children())[:-1])
+            tfms = transforms.Compose(
+                [
+                    transforms.ToTensor(),
+                    transforms.Resize((242, 354)),
+                    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+                ]
+            )  # preprocessing function
+        elif name.startswith("ViT"):
+            feature_map = nn.Sequential(*list(backbone.children())[:-1])[1]
+            tfms = transforms.Compose(
+                [
+                    transforms.ToTensor(),
+                    transforms.Resize((224, 224)),
+                    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+                ]
+            )  # preprocessing function
+
+        feature_map.cuda()
+        feature_map.eval()
+
+        n_imgs = 10_000
+        features = torch.empty((n_imgs, features_dim))
+
+        with torch.no_grad():
+            for i in tqdm(range(n_imgs)):
+                path = os.path.join(img_dir, f"{str(i).rjust(5, '0')}.jpg")
+                if name.startswith("ResNet"):
+                    img = tfms(Image.open(path)).unsqueeze(0).cuda()
+                    phi = feature_map(img)  # forward pass
+                elif name.startswith("ViT"):
+                    img = tfms(Image.open(path)).unsqueeze(0).cuda()
+                    x = backbone._process_input(img)
+                    batch_class_token = backbone.class_token.expand(x.shape[0], -1, -1)
+                    x = torch.cat([batch_class_token, x], dim=1)
+                    phi = feature_map(x)[:, 0]
+                features[i] = phi.squeeze()
+
+        features = features.cpu().float()
+
+        # save features
+        with open(pkl_path, "wb") as f:
+            pickle.dump(features, f)
+
+    return features, features_dim
 
 
 class TripletsDataset(Dataset):
@@ -55,15 +134,30 @@ class TripletsDataset(Dataset):
 # methods below, they are reserved by lightning and used by the
 # trainer
 class SimilarityNet(pl.LightningModule):
-    def __init__(self, features_dim, lr=1e-3, batch_size=8):
+    def __init__(
+        self,
+        features_dim,
+        margin=5.0,
+        embedding_dim=1024,
+        lr=1e-3,
+        momentum=0.9,
+        nesterov=True,
+        weight_decay=1e-3,
+        batch_size=8,
+    ):
         super().__init__()
+
+        self.save_hyperparameters()
 
         self.batch_size = batch_size
         self.learning_rate = lr
+        self.momentum = momentum
+        self.nesterov = nesterov
+        self.weight_decay = weight_decay
 
-        self.embedding = nn.Linear(features_dim, 1024)
+        self.embedding = nn.Linear(features_dim, embedding_dim)
 
-        self.loss = nn.TripletMarginLoss(margin=1.0)
+        self.loss = nn.TripletMarginLoss(margin=margin)
         self.val_loss = partial(F.triplet_margin_loss, margin=0)
 
     def forward(self, a, b, c):
@@ -105,9 +199,9 @@ class SimilarityNet(pl.LightningModule):
         return SGD(
             self.parameters(),
             lr=self.learning_rate,
-            momentum=0.9,
-            nesterov=True,
-            weight_decay=1e-3,
+            momentum=self.momentum,
+            nesterov=self.nesterov,
+            weight_decay=self.weight_decay,
         )
 
     def validation_epoch_end(self, outputs):
@@ -117,51 +211,23 @@ class SimilarityNet(pl.LightningModule):
         self.log("val_acc", avg_acc)
 
 
-# first we compute the embedded images with a pretrained resnet
-backbone = models.resnet152(pretrained=True)
-backbone.requires_grad_(False)
-features_dim = list(backbone.children())[-1].in_features
+# first we compute the embedded images with a pretrained network
 
-if os.path.exists("r152_features.pkl"):
-    # fetch precopmuted features from earlier run
-    with open("r152_features.pkl", "rb") as f:
-        features = pickle.load(f)
-else:
-    # compute features
-    feature_map = nn.Sequential(
-        *list(backbone.children())[:-1]
-    )  # create embedding map by omitting final classification layer
-    feature_map.cuda()
-    feature_map.eval()
+backbone = "ViT_b_32"  # choose one of ResNet[18, 34, 50, 101, 152], ViT_[b_16, b_32]
+features, features_dim = get_features(backbone)
 
-    tfms = transforms.Compose(
-        [
-            transforms.ToTensor(),
-            transforms.Resize((242, 354)),
-            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
-        ]
-    )  # preprocessing function
-
-    n_imgs = 10_000
-    features = torch.empty((n_imgs, features_dim))
-    with torch.no_grad():
-        for i in tqdm(range(n_imgs)):
-            path = os.path.join(img_dir, str(i).rjust(5, "0") + ".jpg")
-            img = tfms(Image.open(path)).unsqueeze(0).cuda()
-            phi = feature_map(img)  # forward pass
-            features[i] = phi.squeeze().cpu().float()
-
-    # save features
-    with open("r152_features.pkl", "wb") as f:
-        pickle.dump(features, f)
-
-
-# now we train our classifier
-learning_rate = 5e-4
-batch_size = 2048
+# hyperparameters
+embedding_dim = 2048
+learning_rate = 1e-3
+momentum = 0.9
+nesterov = True
+weight_decay = 1e-3
+margin = 5.0
+val_ratio = 0.2
+batch_size = 4096
 num_workers = 32
 
-train_triplets, val_triplets = get_split()
+train_triplets, val_triplets = get_split(val_ratio)
 train_dataset = TripletsDataset(train_triplets, features)
 val_dataset = TripletsDataset(val_triplets, features)
 
@@ -178,28 +244,31 @@ val_loader = DataLoader(
     persistent_workers=True,
 )
 
-
-model = SimilarityNet(
-    features_dim=features_dim,
-    lr=learning_rate,
-    batch_size=batch_size,
-)
-
 bar = TQDMProgressBar(refresh_rate=1)
 early_stop = EarlyStopping(
     monitor="val_acc", mode="max", min_delta=0.002, patience=10, verbose=True
 )
 
 trainer = Trainer(
-    # fast_dev_run=True,
+    # fast_dev_run=True, # uncomment for test run
     accelerator="gpu",
-    devices=[1],
-    # auto_select_gpus=True,
+    devices=torch.cuda.device_count(),
+    auto_select_gpus=True,
     min_epochs=1,
-    max_epochs=250,
+    max_epochs=1000,
     callbacks=[bar, early_stop],
     auto_lr_find=True,
     auto_scale_batch_size=False,
+)
+
+model = SimilarityNet(
+    features_dim=features_dim,
+    margin=margin,
+    lr=learning_rate,
+    momentum=momentum,
+    nesterov=nesterov,
+    weight_decay=weight_decay,
+    batch_size=batch_size,
 )
 
 # trainer.tune(model)
@@ -220,4 +289,5 @@ predictions = trainer.predict(model, test_loader)
 predictions = torch.cat(predictions).tolist()
 
 df_pred = pd.DataFrame(predictions)
-df_pred.to_csv("../predictions/r152.txt", index=False, header=None)
+sub_path = f"{backbone}.txt"
+df_pred.to_csv(f"../predictions/{sub_path}", index=False, header=None)
