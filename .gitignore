@@ -132,4 +132,6 @@ food.zip
 lightning_logs
 *.pkl
 
+format.py
+
 .vscode
