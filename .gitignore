@@ -133,6 +133,6 @@ food/
 lightning_logs
 *.pkl
 
-format.py
+scratch.ipynb
 
 .vscode
