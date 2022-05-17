@@ -125,9 +125,10 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# images
+# data
 food/
-food.zip
+*.zip
+/Fabio/task4/data
 
 lightning_logs
 *.pkl
