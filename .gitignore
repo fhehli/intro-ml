@@ -128,11 +128,8 @@ dmypy.json
 3 food_similarity/food/*
 *.zip
 4 homolumo-gap/data/*
-
 lightning_logs
 *.pkl
-
 notebooks
 .vscode
-
 Lukas
