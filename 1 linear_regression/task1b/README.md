@@ -1,0 +1,2 @@
+# Linear Regression
+For this task, we are given a dataset of tuples $(x_1,\dots,x_4, y)$, and we want to find a linear model that best predicts $y$ using the $x_i$. We tried a bunch of linear models from `sklearn` and tuned our hyperparameters through cross-validation. We also tried bagging, i.e. model averaging.

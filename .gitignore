@@ -125,14 +125,14 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# data
-food/
+3 food_similarity/food/*
 *.zip
-/Fabio/task4/data
+4 homolumo-gap/data/*
 
 lightning_logs
 *.pkl
 
-scratch.ipynb
-
+notebooks
 .vscode
+
+Lukas
